@@ -39,50 +39,60 @@
 ### OpenAI互換API
 | エンドポイント | 機能 | 対応パラメータ |
 |----------------|------|----------------|
-| `POST /v1/images/generations` | プロンプトから画像生成 | `prompt`, `n`, `size`, `response_format` |
-| `POST /v1/images/edits` | 入力画像を編集 | `image`, `prompt`, `size`, `response_format` |
-| `POST /v1/images/variations` | 入力画像のバリエーション生成 | `image`, `n`, `size`, `response_format` |
+| `POST /v1/images/generations` | プロンプトから画像生成 | `prompt`, `n`, `size`, `response_format`, `seed` |
+| `POST /v1/images/edits` | 入力画像を編集 | `image`, `prompt`, `n`, `size`, `response_format`, `seed` |
+| `POST /v1/images/variations` | 入力画像のバリエーション生成 | `image`, `n`, `size`, `response_format`, `seed` |
 
 ---
 
 ## 使い方
 
-### curl での利用例
+### オリジナルエンドポイントの使い方例
 
-#### 1. プロンプトから画像生成 (OpenAI-Image-API)
+#### 1. JSON レスポンスを取得
 ```bash
-curl -k -X POST http://localhost:8000/v1/images/generations \
-  -F "prompt=A cute cat illustration" \
-  -F "response_format=url" \
-  | jq 
+curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/process \
+  -F "prompt=A beautiful sunrise over mountains" \
+  -F "input_file=@./input.png"
+```
+この例では入力画像とプロンプトを与えているので **編集モード** になります．  
+返り値は `FILE_SERVER` 設定の有無により，URL か Base64 付きの JSON になります．
 
-curl -k -X POST http://localhost:8000/v1/images/generations \
+#### 2. PNG バイナリを直接取得
+```bash
+curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/process/raw \
+  -F "prompt=A beautiful sunrise over mountains" \
+  -F "input_file=@./input.png" \
+  -o result.png
+```
+この例では `/process/raw` を使うので PNG バイナリが直接返却されます． `-o result.png` でローカルに保存可能です．
+
+---
+
+### OpenAI 互換エンドポイントの使い方例
+
+#### 1. プロンプトから画像生成
+```bash
+curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/v1/images/generations \
   -F "prompt=A cute cat illustration" \
-  -F "response_format=b64_json" \
-  | jq -r '.data[0].b64_json' | base64 -d > test.png
+  -F "n=2" \
+  -F "response_format=url"
 ```
 
-#### 2. 入力画像の編集 (OpenAI-Image-API)
+#### 2. 入力画像の編集
 ```bash
-curl -k -X POST http://localhost:8000/v1/images/edits \
+curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/v1/images/edits \
   -F "image=@./test.png" \
   -F "prompt=make it monochrome" \
-  -F "response_format=url" \
-  | jq 
-
-curl -k -X POST http://localhost:8000/v1/images/edits \
-  -F "image=@./test.png" \
-  -F "prompt=make it monochrome" \
-  | jq -r '.data[0].b64_json' | base64 -d > edit_test.png
+  -F "response_format=b64_json"
 ```
 
-#### 3. バリエーション生成 (OpenAI-Image-API)
+#### 3. バリエーション生成
 ```bash
-curl -k -X POST http://localhost:8000/v1/images/variations \
+curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/v1/images/variations \
   -F "image=@./test.png" \
   -F "n=2" \
-  -F "response_format=url" \
-  | jq
+  -F "response_format=url"
 ```
 
 ---
@@ -92,12 +102,13 @@ curl -k -X POST http://localhost:8000/v1/images/variations \
 #### Python
 ```python
 from openai import OpenAI
-client = OpenAI(base_url="http://localhost:8000/v1", api_key="dummy-key")
+client = OpenAI(base_url="https://michael.info.kanazawa-it.ac.jp:18765/v1", api_key="dummy-key")
 
 # 生成
 res = client.images.generate(
     prompt="A cute cat illustration",
     size="512x512",
+    n=2,
     response_format="url"
 )
 print(res.data[0].url)
