@@ -47,12 +47,13 @@
 ---
 
 ## 使い方
+（簡単のためHTTP使った方法を書きますが，SSL使うことを強くおすすめします）
 
 ### オリジナルエンドポイントの使い方例
 
 #### 1. JSON レスポンスを取得
 ```bash
-curl -X POST http://localhost:8000/process \
+curl -k -X POST http://localhost:8000/process \
   -F "prompt=A beautiful sunrise over mountains" \
   -F "input_file=@./input.png"
 ```
@@ -64,7 +65,7 @@ curl -X POST http://localhost:8000/process \
 
 #### 2. PNG バイナリを直接取得
 ```bash
-curl -X POST http://localhost:8000/process/raw \
+curl -k -X POST http://localhost:8000/process/raw \
   -F "prompt=A beautiful sunrise over mountains" \
   -F "input_file=@./input.png" \
   -o result.png
@@ -77,7 +78,7 @@ curl -X POST http://localhost:8000/process/raw \
 
 #### 1. プロンプトから画像生成(2枚)
 ```bash
-curl -X POST http://localhost:8000/v1/images/generations \
+curl -k -X POST http://localhost:8000/v1/images/generations \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "A cute cat illustration",
@@ -88,7 +89,7 @@ curl -X POST http://localhost:8000/v1/images/generations \
 
 #### 2. 入力画像の編集
 ```bash
-curl -X POST http://localhost:8000/v1/images/edits \
+curl -k -X POST http://localhost:8000/v1/images/edits \
   -F "image=@./test.png" \
   -F "prompt=make it monochrome" \
   -F "n=2" \
@@ -97,7 +98,7 @@ curl -X POST http://localhost:8000/v1/images/edits \
 
 #### 3. バリエーション生成
 ```bash
-curl -X POST http://locahost:8000/v1/images/variations \
+curl -k -X POST http://locahost:8000/v1/images/variations \
   -F "image=@./test.png" \
   -F "n=4" \
   -F "response_format=url"  | jq
