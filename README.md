@@ -51,7 +51,7 @@
 
 #### 1. JSON レスポンスを取得
 ```bash
-curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/process \
+curl -X POST http://localhost:8000/process \
   -F "prompt=A beautiful sunrise over mountains" \
   -F "input_file=@./input.png"
 ```
@@ -60,7 +60,7 @@ curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/process \
 
 #### 2. PNG バイナリを直接取得
 ```bash
-curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/process/raw \
+curl -X POST http://localhost:8000/process/raw \
   -F "prompt=A beautiful sunrise over mountains" \
   -F "input_file=@./input.png" \
   -o result.png
@@ -73,7 +73,7 @@ curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/process/raw \
 
 #### 1. プロンプトから画像生成
 ```bash
-curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/v1/images/generations \
+curl -X POST http://localhost:8000/v1/images/generations \
   -F "prompt=A cute cat illustration" \
   -F "n=2" \
   -F "response_format=url"
@@ -81,7 +81,7 @@ curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/v1/images/generations 
 
 #### 2. 入力画像の編集
 ```bash
-curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/v1/images/edits \
+curl -X POST http://localhost:8000/v1/images/edits \
   -F "image=@./test.png" \
   -F "prompt=make it monochrome" \
   -F "response_format=b64_json"
@@ -89,7 +89,7 @@ curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/v1/images/edits \
 
 #### 3. バリエーション生成
 ```bash
-curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/v1/images/variations \
+curl -X POST http://locahost:8000/v1/images/variations \
   -F "image=@./test.png" \
   -F "n=2" \
   -F "response_format=url"
@@ -102,7 +102,7 @@ curl -X POST https://michael.info.kanazawa-it.ac.jp:18765/v1/images/variations \
 #### Python
 ```python
 from openai import OpenAI
-client = OpenAI(base_url="https://michael.info.kanazawa-it.ac.jp:18765/v1", api_key="dummy-key")
+client = OpenAI(base_url="http://locahost:8000/v1", api_key="dummy-key")
 
 # 生成
 res = client.images.generate(
