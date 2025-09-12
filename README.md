@@ -34,7 +34,7 @@
 | エンドポイント | 機能 | 主なパラメータ | 出力 |
 |----------------|------|----------------|------|
 | `POST /process` | 生成／編集／バリエーション（自動判定） | `input_image_url`, `input_file`, `prompt`, `seed`, `width`, `height`, `guidance_scale`, `num_inference_steps`, `bearer_token` | JSON（URL or Base64） |
-| `POST /process/raw` | 同上 | `input_image_url`, `input_file`, `prompt`, `seed`, `width`, `height`, `guidance_scale`, `num_inference_steps`, `bearer_token` | PNGバイナリ |
+| `POST /process/raw` | 同上 | 同上 | PNGバイナリ |
 
 
 ### OpenAI互換API
