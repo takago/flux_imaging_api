@@ -51,11 +51,12 @@
 
 #### 1. プロンプトから画像生成 (OpenAI-Image-API)
 ```bash
-curl -X POST http://localhost:8000/v1/images/generations \
+curl -k -X POST http://localhost:8000/v1/images/generations \
   -F "prompt=A cute cat illustration" \
-  -F "response_format=url"
+  -F "response_format=url" \
+  | jq 
 
-curl -sk -X POST http://localhost:8000/v1/images/generations \
+curl -k -X POST http://localhost:8000/v1/images/generations \
   -F "prompt=A cute cat illustration" \
   -F "response_format=b64_json" \
   | jq -r '.data[0].b64_json' | base64 -d > test.png
@@ -63,12 +64,13 @@ curl -sk -X POST http://localhost:8000/v1/images/generations \
 
 #### 2. 入力画像の編集 (OpenAI-Image-API)
 ```bash
-curl -X POST http://localhost:8000/v1/images/edits \
+curl -k -X POST http://localhost:8000/v1/images/edits \
   -F "image=@./test.png" \
   -F "prompt=make it monochrome" \
-  -F "response_format=url"
+  -F "response_format=url" \
+  | jq 
 
-curl -X POST http://localhost:8000/v1/images/edits \
+curl -k -X POST http://localhost:8000/v1/images/edits \
   -F "image=@./test.png" \
   -F "prompt=make it monochrome" \
   | jq -r '.data[0].b64_json' | base64 -d > edit_test.png
@@ -76,10 +78,11 @@ curl -X POST http://localhost:8000/v1/images/edits \
 
 #### 3. バリエーション生成 (OpenAI-Image-API)
 ```bash
-curl -X POST http://localhost:8000/v1/images/variations \
+curl -k -X POST http://localhost:8000/v1/images/variations \
   -F "image=@./test.png" \
   -F "n=2" \
-  -F "response_format=url"
+  -F "response_format=url" \
+  | jq
 ```
 
 ---
