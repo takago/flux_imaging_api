@@ -75,12 +75,15 @@ curl -X POST http://localhost:8000/process/raw \
 
 ### OpenAI 互換エンドポイントの使い方例
 
-#### 1. プロンプトから画像生成
+#### 1. プロンプトから画像生成(2枚)
 ```bash
 curl -X POST http://localhost:8000/v1/images/generations \
-  -F "prompt=A cute cat illustration" \
-  -F "n=2" \
-  -F "response_format=url"
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "A cute cat illustration",
+    "n": 2,
+    "response_format": "url"
+  }' | jq
 ```
 
 #### 2. 入力画像の編集
@@ -88,15 +91,16 @@ curl -X POST http://localhost:8000/v1/images/generations \
 curl -X POST http://localhost:8000/v1/images/edits \
   -F "image=@./test.png" \
   -F "prompt=make it monochrome" \
-  -F "response_format=b64_json"
+  -F "n=2" \
+  -F "response_format=url"  | jq
 ```
 
 #### 3. バリエーション生成
 ```bash
 curl -X POST http://locahost:8000/v1/images/variations \
   -F "image=@./test.png" \
-  -F "n=2" \
-  -F "response_format=url"
+  -F "n=4" \
+  -F "response_format=url"  | jq
 ```
 
 ---
