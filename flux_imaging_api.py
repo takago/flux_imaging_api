@@ -229,10 +229,81 @@ async def process_image(
     num_inference_steps: int = Form(None),
     input_file: UploadFile = File(None),
 ):
-    img, buf, used_seed = await run_pipeline(input_image_url, prompt, bearer_token, seed, width, height,
-                                             guidance_scale, num_inference_steps, input_file)
+    # 実行
+    img, buf, used_seed = await run_pipeline(
+        input_image_url, prompt, bearer_token, seed,
+        width, height, guidance_scale, num_inference_steps, input_file
+    )
     if img is None:
         return JSONResponse({"error": "invalid input"}, status_code=400)
+
+    # 出力画像サイズ
+    output_width, output_height = img.width, img.height
+
+    # 実行モードの判定
+    pipeline_mode = detect_mode(input_image_url, prompt, input_file)
+
+    # 実際に使用されたパラメータ
+    if pipeline_mode == "generate":
+        gs = guidance_scale or DEFAULTS["generate"]["guidance_scale"]
+        steps = num_inference_steps or DEFAULTS["generate"]["num_inference_steps"]
+    elif pipeline_mode == "edit":
+        gs = guidance_scale or DEFAULTS["edit"]["guidance_scale"]
+        steps = num_inference_steps or DEFAULTS["edit"]["num_inference_steps"]
+    else:
+        gs = guidance_scale or DEFAULTS["variation"]["guidance_scale"]
+        steps = num_inference_steps or DEFAULTS["variation"]["num_inference_steps"]
+
+    # 入力画像情報
+    input_info = {"source": None, "bearer_token": bool(bearer_token)}
+    if input_file:
+        input_file.file.seek(0)
+        orig_img = Image.open(input_file.file).convert("RGB")
+        input_info.update({
+            "source": "file",
+            "filename": input_file.filename,
+            "original_width": orig_img.width,
+            "original_height": orig_img.height
+        })
+    elif input_image_url:
+        try:
+            async with httpx.AsyncClient(verify=False) as client:
+                resp = await client.get(input_image_url)
+                resp.raise_for_status()
+                orig_img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+            input_info.update({
+                "source": "url",
+                "url": input_image_url,
+                "original_width": orig_img.width,
+                "original_height": orig_img.height
+            })
+        except Exception:
+            input_info.update({
+                "source": "url",
+                "url": input_image_url,
+                "original_width": None,
+                "original_height": None
+            })
+
+    # モデル情報
+    model_info = {
+        "model": MODEL_INFO[pipeline_mode]["base_model"],
+        "loras": MODEL_INFO[pipeline_mode]["loras"],
+    }
+
+    # 整理したレスポンス（順序を調整）
+    metadata = {
+        "mode": pipeline_mode,               # generate / edit / variation
+        "input_image": input_info,
+        "prompt": prompt,
+        "seed": used_seed,
+        "guidance_scale": gs,
+        "num_inference_steps": steps,
+        "width": output_width,
+        "height": output_height,
+        **model_info,
+    }
+
     if FILE_SERVER:
         upload_url = f"{FILE_SERVER}/upload"
         files = {"file": (f"{uuid.uuid4()}.png", buf, "image/png")}
@@ -240,10 +311,11 @@ async def process_image(
             up_resp = await client.post(upload_url, files=files)
             up_resp.raise_for_status()
             up_result = up_resp.json()
-        return {"result_image_url": f"{FILE_SERVER}{up_result['url']}", "seed": used_seed}
+        metadata["result_image_url"] = f"{FILE_SERVER}{up_result['url']}"
+        return metadata
     else:
-        return {"result_image_base64": base64.b64encode(buf.getvalue()).decode("utf-8"), "seed": used_seed}
-
+        metadata["result_image_base64"] = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return metadata
 
 @app.post("/process/raw")
 async def process_image_raw(
@@ -355,3 +427,4 @@ async def openai_image_variation(
                 up_result = up_resp.json()
             results.append({"url": f"{FILE_SERVER}{up_result['url']}", "seed": used_seed})
     return {"created": int(time.time()), "data": results}
+
