@@ -24,7 +24,7 @@ import json
 import httpx
 import os
 import base64
-from fastapi import FastAPI, Form, File, UploadFile
+from fastapi import FastAPI, Form, File, UploadFile, Body
 from fastapi.responses import JSONResponse, StreamingResponse
 from PIL import Image
 
@@ -266,13 +266,13 @@ async def process_image_raw(
 
 # ---------- OpenAI Image API 互換エンドポイント ----------
 @app.post("/v1/images/generations")
-async def openai_image_generate(
-    prompt: str = Form(...),
-    n: int = Form(1),
-    size: str = Form("1024x1024"),
-    response_format: str = Form("url"),
-    seed: int = Form(None),
-):
+async def openai_image_generate(body: dict = Body(...)):
+    prompt = body.get("prompt")
+    n = body.get("n", 1)
+    size = body.get("size", "1024x1024")
+    response_format = body.get("response_format", "url")
+    seed = body.get("seed")
+    
     width, height = map(int, size.split("x"))
     results = []
     for i in range(n):
