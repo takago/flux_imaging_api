@@ -42,11 +42,11 @@ pipeline_quant_config = PipelineQuantizationConfig(
     components_to_quantize=["transformer", "text_encoder_2"],
 )
 
-# --- デフォルト設定 ---
+# --- デフォルト設定（seed は削除） ---
 DEFAULTS = {
-    "edit": {"seed": 21, "guidance_scale": 2.5, "num_inference_steps": 8},
-    "generate": {"seed": 123456789, "guidance_scale": 3.5, "num_inference_steps": 8},
-    "variation": {"seed": 777, "guidance_scale": 2.5, "num_inference_steps": 8},
+    "edit": {"guidance_scale": 2.5, "num_inference_steps": 8},
+    "generate": {"guidance_scale": 3.5, "num_inference_steps": 8},
+    "variation": {"guidance_scale": 2.5, "num_inference_steps": 8},
 }
 
 # --- モデル/LoRA情報 ---
@@ -143,9 +143,17 @@ def detect_mode(input_image_url, prompt, init_image):
         return None
 
 
+def get_generator(seed: int | None, i: int = 0):
+    if seed is None:
+        gen_seed = int(torch.seed())  # ランダム
+    else:
+        gen_seed = seed + i           # 再現性を保ちつつ複数枚対応
+    return torch.Generator().manual_seed(gen_seed), gen_seed
+
+
 # ---------- 共通処理 ----------
 async def run_pipeline(input_image_url, prompt, bearer_token, seed, width, height,
-                       guidance_scale, num_inference_steps, input_file: UploadFile = None):
+                       guidance_scale, num_inference_steps, input_file: UploadFile = None, i: int = 0):
 
     init_image = None
     if input_file:
@@ -155,13 +163,22 @@ async def run_pipeline(input_image_url, prompt, bearer_token, seed, width, heigh
 
     pipeline_mode = detect_mode(input_image_url, prompt, init_image)
     if pipeline_mode is None:
-        return None, None  # エラー扱い
+        return None, None, None  # エラー扱い
 
+    # パラメータ設定
     if pipeline_mode == "variation":
-        seed = seed or DEFAULTS["variation"]["seed"]
         guidance_scale = guidance_scale or DEFAULTS["variation"]["guidance_scale"]
         num_inference_steps = num_inference_steps or DEFAULTS["variation"]["num_inference_steps"]
-        generator = torch.Generator().manual_seed(seed)
+    elif pipeline_mode == "edit":
+        guidance_scale = guidance_scale or DEFAULTS["edit"]["guidance_scale"]
+        num_inference_steps = num_inference_steps or DEFAULTS["edit"]["num_inference_steps"]
+    else:
+        guidance_scale = guidance_scale or DEFAULTS["generate"]["guidance_scale"]
+        num_inference_steps = num_inference_steps or DEFAULTS["generate"]["num_inference_steps"]
+
+    generator, used_seed = get_generator(seed, i)
+
+    if pipeline_mode == "variation":
         if init_image is None:
             async with httpx.AsyncClient(verify=False) as client:
                 resp = await client.get(input_image_url)
@@ -173,10 +190,6 @@ async def run_pipeline(input_image_url, prompt, bearer_token, seed, width, heigh
                           width=width or init_image.size[0], height=height or init_image.size[1],
                           **pipe_prior_output)
     elif pipeline_mode == "edit":
-        seed = seed or DEFAULTS["edit"]["seed"]
-        guidance_scale = guidance_scale or DEFAULTS["edit"]["guidance_scale"]
-        num_inference_steps = num_inference_steps or DEFAULTS["edit"]["num_inference_steps"]
-        generator = torch.Generator().manual_seed(seed)
         if init_image is None:
             headers = {}
             if bearer_token:
@@ -191,10 +204,6 @@ async def run_pipeline(input_image_url, prompt, bearer_token, seed, width, heigh
                            guidance_scale=guidance_scale, num_inference_steps=num_inference_steps,
                            width=width or init_image.size[0], height=height or init_image.size[1])
     else:
-        seed = seed or DEFAULTS["generate"]["seed"]
-        guidance_scale = guidance_scale or DEFAULTS["generate"]["guidance_scale"]
-        num_inference_steps = num_inference_steps or DEFAULTS["generate"]["num_inference_steps"]
-        generator = torch.Generator().manual_seed(seed)
         width = width or 1024
         height = height or 1024
         result = pipe_gen(prompt=prompt, generator=generator, guidance_scale=guidance_scale,
@@ -204,7 +213,7 @@ async def run_pipeline(input_image_url, prompt, bearer_token, seed, width, heigh
     out_buf = io.BytesIO()
     processed_img.save(out_buf, format="PNG")
     out_buf.seek(0)
-    return processed_img, out_buf
+    return processed_img, out_buf, used_seed
 
 
 # ---------- オリジナルエンドポイント ----------
@@ -220,8 +229,8 @@ async def process_image(
     num_inference_steps: int = Form(None),
     input_file: UploadFile = File(None),
 ):
-    img, buf = await run_pipeline(input_image_url, prompt, bearer_token, seed, width, height,
-                                  guidance_scale, num_inference_steps, input_file)
+    img, buf, used_seed = await run_pipeline(input_image_url, prompt, bearer_token, seed, width, height,
+                                             guidance_scale, num_inference_steps, input_file)
     if img is None:
         return JSONResponse({"error": "invalid input"}, status_code=400)
     if FILE_SERVER:
@@ -231,9 +240,9 @@ async def process_image(
             up_resp = await client.post(upload_url, files=files)
             up_resp.raise_for_status()
             up_result = up_resp.json()
-        return {"result_image_url": f"{FILE_SERVER}{up_result['url']}"}
+        return {"result_image_url": f"{FILE_SERVER}{up_result['url']}", "seed": used_seed}
     else:
-        return {"result_image_base64": base64.b64encode(buf.getvalue()).decode("utf-8")}
+        return {"result_image_base64": base64.b64encode(buf.getvalue()).decode("utf-8"), "seed": used_seed}
 
 
 @app.post("/process/raw")
@@ -248,8 +257,8 @@ async def process_image_raw(
     num_inference_steps: int = Form(None),
     input_file: UploadFile = File(None),
 ):
-    img, buf = await run_pipeline(input_image_url, prompt, bearer_token, seed, width, height,
-                                  guidance_scale, num_inference_steps, input_file)
+    img, buf, used_seed = await run_pipeline(input_image_url, prompt, bearer_token, seed, width, height,
+                                             guidance_scale, num_inference_steps, input_file)
     if img is None:
         return JSONResponse({"error": "invalid input"}, status_code=400)
     return StreamingResponse(buf, media_type="image/png")
@@ -262,15 +271,16 @@ async def openai_image_generate(
     n: int = Form(1),
     size: str = Form("1024x1024"),
     response_format: str = Form("url"),
+    seed: int = Form(None),
 ):
     width, height = map(int, size.split("x"))
     results = []
-    for _ in range(n):
-        img, buf = await run_pipeline(None, prompt, None, None, width, height, None, None, None)
+    for i in range(n):
+        img, buf, used_seed = await run_pipeline(None, prompt, None, seed, width, height, None, None, None, i)
         if img is None:
             return JSONResponse({"error": "invalid input"}, status_code=400)
         if response_format == "b64_json":
-            results.append({"b64_json": base64.b64encode(buf.getvalue()).decode("utf-8")})
+            results.append({"b64_json": base64.b64encode(buf.getvalue()).decode("utf-8"), "seed": used_seed})
         else:
             if not FILE_SERVER:
                 return JSONResponse({"error": "FILE_SERVER not configured"}, status_code=500)
@@ -280,7 +290,7 @@ async def openai_image_generate(
                 up_resp = await client.post(upload_url, files=files)
                 up_resp.raise_for_status()
                 up_result = up_resp.json()
-            results.append({"url": f"{FILE_SERVER}{up_result['url']}"})
+            results.append({"url": f"{FILE_SERVER}{up_result['url']}", "seed": used_seed})
     return {"created": int(time.time()), "data": results}
 
 
@@ -288,25 +298,32 @@ async def openai_image_generate(
 async def openai_image_edit(
     image: UploadFile = File(...),
     prompt: str = Form(...),
+    n: int = Form(1),
     size: str = Form("1024x1024"),
     response_format: str = Form("url"),
+    seed: int = Form(None),
 ):
     width, height = map(int, size.split("x"))
-    img, buf = await run_pipeline(None, prompt, None, None, width, height, None, None, image)
-    if img is None:
-        return JSONResponse({"error": "invalid input"}, status_code=400)
-    if response_format == "b64_json":
-        return {"created": int(time.time()), "data": [{"b64_json": base64.b64encode(buf.getvalue()).decode("utf-8")}]}
-    else:
-        if not FILE_SERVER:
-            return JSONResponse({"error": "FILE_SERVER not configured"}, status_code=500)
-        upload_url = f"{FILE_SERVER}/upload"
-        files = {"file": (f"{uuid.uuid4()}.png", buf, "image/png")}
-        async with httpx.AsyncClient(verify=False) as client:
-            up_resp = await client.post(upload_url, files=files)
-            up_resp.raise_for_status()
-            up_result = up_resp.json()
-        return {"created": int(time.time()), "data": [{"url": f"{FILE_SERVER}{up_result['url']}"}]}
+    raw_bytes = await image.read()
+    results = []
+    for i in range(n):
+        img_file = UploadFile(filename=image.filename, file=io.BytesIO(raw_bytes))
+        img, buf, used_seed = await run_pipeline(None, prompt, None, seed, width, height, None, None, img_file, i)
+        if img is None:
+            return JSONResponse({"error": "invalid input"}, status_code=400)
+        if response_format == "b64_json":
+            results.append({"b64_json": base64.b64encode(buf.getvalue()).decode("utf-8"), "seed": used_seed})
+        else:
+            if not FILE_SERVER:
+                return JSONResponse({"error": "FILE_SERVER not configured"}, status_code=500)
+            upload_url = f"{FILE_SERVER}/upload"
+            files = {"file": (f"{uuid.uuid4()}.png", buf, "image/png")}
+            async with httpx.AsyncClient(verify=False) as client:
+                up_resp = await client.post(upload_url, files=files)
+                up_resp.raise_for_status()
+                up_result = up_resp.json()
+            results.append({"url": f"{FILE_SERVER}{up_result['url']}", "seed": used_seed})
+    return {"created": int(time.time()), "data": results}
 
 
 @app.post("/v1/images/variations")
@@ -315,15 +332,18 @@ async def openai_image_variation(
     n: int = Form(1),
     size: str = Form("1024x1024"),
     response_format: str = Form("url"),
+    seed: int = Form(None),
 ):
     width, height = map(int, size.split("x"))
+    raw_bytes = await image.read()
     results = []
-    for _ in range(n):
-        img, buf = await run_pipeline(None, None, None, None, width, height, None, None, image)
+    for i in range(n):
+        img_file = UploadFile(filename=image.filename, file=io.BytesIO(raw_bytes))
+        img, buf, used_seed = await run_pipeline(None, None, None, seed, width, height, None, None, img_file, i)
         if img is None:
             return JSONResponse({"error": "invalid input"}, status_code=400)
         if response_format == "b64_json":
-            results.append({"b64_json": base64.b64encode(buf.getvalue()).decode("utf-8")})
+            results.append({"b64_json": base64.b64encode(buf.getvalue()).decode("utf-8"), "seed": used_seed})
         else:
             if not FILE_SERVER:
                 return JSONResponse({"error": "FILE_SERVER not configured"}, status_code=500)
@@ -333,5 +353,5 @@ async def openai_image_variation(
                 up_resp = await client.post(upload_url, files=files)
                 up_resp.raise_for_status()
                 up_result = up_resp.json()
-            results.append({"url": f"{FILE_SERVER}{up_result['url']}"})
+            results.append({"url": f"{FILE_SERVER}{up_result['url']}", "seed": used_seed})
     return {"created": int(time.time()), "data": results}
