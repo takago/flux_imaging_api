@@ -1,130 +1,121 @@
 # Flux Imaging API
 
-Flux パイプラインを利用した画像生成・編集・バリエーション API サーバです．  
-独自のオリジナル API に加えて，OpenAI Image API 互換のエンドポイントも提供しています．
+**Flux Imaging API** は，Black Forest Labs の Flux モデルファミリーを用いた画像生成・編集・バリエーション API サーバです．  
+オリジナルのエンドポイントに加え，**OpenAI Image API 互換エンドポイント**（`/v1/images/...`）も提供しています．  
+
+- 画像生成（generate）  
+- 画像編集（edit）  
+- 画像バリエーション（variation）  
+- LoRA 適用対応  
+- OpenAI 互換レスポンス（`url` / `b64_json`）  
 
 ---
 
 ## 特徴
 
-- **3つのモード**  
-  - 生成 (Flux)  
-  - 編集 (FluxKontext)  
-  - バリエーション (FluxRedux + Flux)  
-
-- **2種類の入力**  
-  - リモート画像URLを指定して処理  
-  - ローカルファイルを直接アップロード  
-
-- **2種類の出力**  
-  - 環境変数 `FILE_SERVER` が設定されていれば，処理結果をファイルサーバにアップロードして `result_image_url` を返す  
-  - 未設定の場合は，処理結果を base64 エンコード画像として JSON に埋め込んで返す  
-
-- **直接PNG出力**  
-  `/process/raw` を使うと，処理結果をそのまま PNG として取得可能  
-
-- **OpenAI Image API 互換エンドポイント**  
-  `/v1/images/generations`, `/v1/images/edits`, `/v1/images/variations` を提供
+- **3種類のモードを自動判定**  
+  - 入力画像＋プロンプト → **edit**  
+  - 入力画像のみ → **variation**  
+  - プロンプトのみ → **generate**  
+- **LoRA対応**  
+  - `MODEL_INFO` に定義された LoRA を自動ロード  
+- **VRAM節約**  
+  - `bitsandbytes` 4bit量子化  
+  - `enable_model_cpu_offload()` によりCPUオフロード  
+- **柔軟な出力形式**  
+  - `FILE_SERVER` があればURL返却  
+  - 未設定なら Base64 返却  
 
 ---
 
-## インストール
+## エンドポイント一覧
 
-### 依存関係
-- Python 3.10+
-- [diffusers](https://github.com/huggingface/diffusers)
-- [torch](https://pytorch.org/)
-- fastapi
-- uvicorn
-- httpx
-- pillow
-- bitsandbytes（4bit量子化用）
+### オリジナルAPI
+| エンドポイント | 機能 | 出力 |
+|----------------|------|------|
+| `POST /process` | 生成／編集／バリエーション（自動判定） | JSON（URL or Base64） |
+| `POST /process/raw` | 同上 | PNGバイナリ |
 
-### セットアップ例
-
-```bash
-git clone https://github.com/<USERNAME>/flux-imaging-api.git
-cd flux-imaging-api
-
-pip install -r requirements.txt
-```
+### OpenAI互換API
+| エンドポイント | 機能 | 対応パラメータ |
+|----------------|------|----------------|
+| `POST /v1/images/generations` | プロンプトから画像生成 | `prompt`, `n`, `size`, `response_format` |
+| `POST /v1/images/edits` | 入力画像を編集 | `image`, `prompt`, `size`, `response_format` |
+| `POST /v1/images/variations` | 入力画像のバリエーション生成 | `image`, `n`, `size`, `response_format` |
 
 ---
 
-## 起動方法
+## 使い方
 
+### curl での利用例
+
+#### 1. プロンプトから画像生成
 ```bash
-uvicorn flux_imaging_api:app --host 0.0.0.0 --port 8000
+curl -X POST http://localhost:8000/v1/images/generations \
+  -F "prompt=A cute cat illustration" \
+  -F "response_format=url"
 ```
 
-ファイルサーバのベースURLは環境変数で指定可能です．  
-デフォルトでは外部アップロードは行わず，base64 で返却されます．
-
+#### 2. 入力画像の編集
 ```bash
-export FILE_SERVER=http://your-file-server:8010
+curl -X POST http://localhost:8000/v1/images/edits \
+  -F "image=@./test.png" \
+  -F "prompt=make it monochrome" \
+  -F "response_format=b64_json"
 ```
 
----
-
-## 使用例
-
-### 1. 生成（プロンプトのみ）
+#### 3. バリエーション生成
 ```bash
-curl -X POST http://localhost:8000/process      -F "prompt=a fantasy landscape"
-```
-
-### 2. 編集（画像＋プロンプト，ローカルファイル指定）
-```bash
-curl -X POST http://localhost:8000/process      -F "file=@./input.png"      -F "prompt=make it stylish"
-```
-
-### 3. 編集（画像＋プロンプト，リモートURL指定）
-```bash
-curl -X POST http://localhost:8000/process      -F "input_image_url=https://example.com/src.png"      -F "prompt=make it stylish"
-```
-
-### 4. バリエーション（画像のみ）
-```bash
-curl -X POST http://localhost:8000/process      -F "file=@./input.png"
-```
-
-### 5. 生PNGを直接取得
-```bash
-curl -X POST http://localhost:8000/process/raw      -F "prompt=a fantasy landscape"      -o result.png
-```
-
-### 6. OpenAI互換エンドポイント
-```bash
-curl -X POST http://localhost:8000/v1/images/generations      -H "Content-Type: application/json"      -d '{"prompt":"a fantasy landscape","size":"512x512","n":1}'
+curl -X POST http://localhost:8000/v1/images/variations \
+  -F "image=@./test.png" \
+  -F "n=2" \
+  -F "response_format=url"
 ```
 
 ---
 
-## 出力仕様
+### OpenAI SDK からの利用例
 
-- `/process` の場合  
-  JSON 応答に以下を含む：
-  - `input_image_url`  
-  - `prompt`  
-  - `seed`, `guidance_scale`, `num_inference_steps`  
-  - `width`, `height`  
-  - `result_image_url`（FILE_SERVERありの場合）  
-  - `result_image_b64`（FILE_SERVER未設定の場合）  
-  - `model_info`（使用モデル・LoRA情報）  
+#### Python
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="dummy-key")
 
-- `/process/raw` の場合  
-  - 処理結果の PNG バイナリを返却  
+# 生成
+res = client.images.generate(
+    prompt="A cute cat illustration",
+    size="512x512",
+    response_format="url"
+)
+print(res.data[0].url)
+
+# 編集
+with open("test.png", "rb") as f:
+    res = client.images.edits(
+        model="flux",  # ダミー
+        image=f,
+        prompt="make it monochrome",
+        response_format="b64_json"
+    )
+    print(res.data[0].b64_json)
+```
 
 ---
 
-## 謝辞 (Acknowledgements)
+## 環境変数
 
-- [Black Forest Labs](https://blackforestlabs.ai/) が開発した Flux モデルファミリー  
-- [OpenAI](https://openai.com/) が提供する Image API の設計（OpenAI 互換エンドポイントの参考にしました）  
-- [ChatGPT (OpenAI)](https://chat.openai.com/) による設計・実装サポート  
+- `FILE_SERVER`  
+  ファイル保存用サーバのURL．設定されている場合はURL返却，未設定の場合はBase64返却になります．  
 
 ---
 
 ## ライセンス
 
-MIT License
+MIT License  
+
+---
+
+## 謝辞
+
+- **Black Forest Labs**: Flux モデルファミリーの開発  
+- **OpenAI**: Image API の設計に着想を得ています  
