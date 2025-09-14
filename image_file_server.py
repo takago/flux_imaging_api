@@ -24,7 +24,7 @@ async def upload(file: UploadFile = File(...)):
         raise HTTPException(400, "empty file upload")
  
     ext = pathlib.Path(file.filename).suffix.lower() or ".bin"
-    if ext not in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"]:
+    if ext not in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".mp4", "webm"]:
         ext = ".bin"
     fid = f"{uuid.uuid4().hex}{ext}"
     path = os.path.join(TMP_DIR, fid)
@@ -35,7 +35,7 @@ async def upload(file: UploadFile = File(...)):
     return {"url": f"/i/{fid}"}
  
 @app.get("/i/{fid}")
-def get_image(fid: str):
+def get_file(fid: str):
     path = os.path.join(TMP_DIR, fid)
     if not os.path.isfile(path):
         raise HTTPException(404, "not found")
