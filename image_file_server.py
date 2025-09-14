@@ -9,7 +9,7 @@ os.makedirs(TMP_DIR, exist_ok=True)
  
 BEARER_TOKEN = os.environ.get("BEARER_TOKEN", "changeme-token")
  
-app = FastAPI(title="Temp Image Server")
+app = FastAPI(title="Image File Server")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
